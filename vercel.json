@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "",
+  "installCommand": "",
+  "framework": null,
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/api/(.*)", "dest": "/api/index.mjs" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
