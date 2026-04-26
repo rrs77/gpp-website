@@ -75030,8 +75030,26 @@ var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function escapeHtml2(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+var TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || "1x0000000000000000000000000000000AA";
+async function verifyTurnstile(token, ip) {
+  try {
+    const body = new URLSearchParams();
+    body.append("secret", TURNSTILE_SECRET);
+    body.append("response", token);
+    if (ip && ip !== "unknown") body.append("remoteip", ip);
+    const r = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      { method: "POST", body }
+    );
+    const data = await r.json();
+    return Boolean(data?.success);
+  } catch (err) {
+    logger.error({ err }, "Turnstile verification request failed");
+    return false;
+  }
+}
 router4.post("/contact", async (req, res) => {
-  const { name, email, organisation, project, website } = req.body || {};
+  const { name, email, organisation, project, website, captchaToken } = req.body || {};
   if (typeof website === "string" && website.trim() !== "") {
     res.json({ success: true });
     return;
@@ -75045,11 +75063,18 @@ router4.post("/contact", async (req, res) => {
     errors.push("organisation is required");
   if (typeof project !== "string" || project.trim().length === 0)
     errors.push("project is required");
+  if (typeof captchaToken !== "string" || captchaToken.trim().length === 0)
+    errors.push("captcha is required");
   if (errors.length > 0) {
     res.status(400).json({ error: "Invalid submission", details: errors });
     return;
   }
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+  const captchaOk = await verifyTurnstile(captchaToken, ip);
+  if (!captchaOk) {
+    res.status(400).json({ error: "Verification failed. Please try again." });
+    return;
+  }
   if (!checkRateLimit(ip)) {
     res.status(429).json({ error: "Too many submissions. Please try again later." });
     return;
